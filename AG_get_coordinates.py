@@ -4,19 +4,20 @@ from time import sleep
 from tqdm import tqdm
 import os
 
-# Print current working directory to verify file location
+# Print current working directory
 print(f"Current working directory: {os.getcwd()}")
 
-# List files in directory to confirm the Excel file exists
+# List files in directory
 print("Files in directory:")
 for file in os.listdir():
     print(f"  - {file}")
 
-# Use the correct file name with underscore as shown in Explorer
-file_path = "RP_Lanes.xlsx"  
+# Load the Excel file - specifically the "Experiment" sheet
+file_path = "23-24_Duke_Volume.xlsx"  
 try:
-    df = pd.read_excel(file_path)
-    print(f"Successfully loaded Excel file. Columns: {df.columns.tolist()}")
+    # Specify the sheet name "Experiment"
+    df = pd.read_excel(file_path, sheet_name="Experiment")
+    print(f"Successfully loaded 'Experiment' sheet. Columns: {df.columns.tolist()}")
     print(f"First few rows:\n{df.head()}")
 except Exception as e:
     print(f"Error loading Excel file: {e}")
@@ -45,19 +46,31 @@ def get_lat_lon(city):
         print(f"Error geocoding {city}: {e}")
         return pd.Series([None, None])
 
-# Use the correct column name "Ship to City" instead of "Ship from city"
-city_column = 'Ship from city'
+# Check if "City, State" column exists
+if 'City, State' not in df.columns:
+    print(f"ERROR: 'City, State' column not found in the Experiment sheet. Available columns: {df.columns.tolist()}")
+    exit(1)
 
-# Apply function to all cities with a progress bar
-print(f"Starting geocoding process for column '{city_column}'...")
+print(f"Starting geocoding process for 'City, State' column...")
 tqdm.pandas(desc="Geocoding cities")
 df['Lat'] = None
 df['Lon'] = None
-coordinates = df[city_column].progress_apply(get_lat_lon)
+coordinates = df['City, State'].progress_apply(get_lat_lon)
 df['Lat'] = coordinates.iloc[:, 0]
 df['Lon'] = coordinates.iloc[:, 1]
 
-# Save the results back to Excel
-output_file = "RP_cities_with_coordinates.xlsx"
-df.to_excel(output_file, index=False)
+# Save the results back to Excel, but only update the "Experiment" sheet
+# First read all sheets
+with pd.ExcelFile(file_path) as xls:
+    all_sheets = {sheet: pd.read_excel(xls, sheet_name=sheet) for sheet in xls.sheet_names}
+
+# Replace the "Experiment" sheet with our updated dataframe
+all_sheets["Experiment"] = df
+
+# Write all sheets back to a new Excel file
+output_file = "23-24_Duke_Volume_with_coordinates.xlsx"
+with pd.ExcelWriter(output_file) as writer:
+    for sheet_name, sheet_df in all_sheets.items():
+        sheet_df.to_excel(writer, sheet_name=sheet_name, index=False)
+
 print(f"✅ Done! The updated file is saved as {output_file}")
